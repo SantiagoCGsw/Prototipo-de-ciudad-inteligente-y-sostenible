@@ -1,0 +1,57 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    volumes: ["./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"]
+    restart: unless-stopped
+
+  simulator:
+    build: ./app
+    command: python simulator.py
+    environment: [MQTT_HOST=mosquitto]
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  edge:
+    build: ./app
+    command: python edge.py
+    environment: [MQTT_HOST=mosquitto]
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  energy:
+    build: ./app
+    command: uvicorn domain_service:app --host 0.0.0.0 --port 8000
+    environment: [MQTT_HOST=mosquitto, DOMAIN=energy]
+    volumes: ["energy-data:/data"]
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  mobility:
+    build: ./app
+    command: uvicorn domain_service:app --host 0.0.0.0 --port 8000
+    environment: [MQTT_HOST=mosquitto, DOMAIN=mobility]
+    volumes: ["mobility-data:/data"]
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  waste:
+    build: ./app
+    command: uvicorn domain_service:app --host 0.0.0.0 --port 8000
+    environment: [MQTT_HOST=mosquitto, DOMAIN=waste]
+    volumes: ["waste-data:/data"]
+    depends_on: [mosquitto]
+    restart: unless-stopped
+
+  gateway:
+    build: ./app
+    command: uvicorn gateway:app --host 0.0.0.0 --port 8000
+    environment: [MQTT_HOST=mosquitto]
+    ports: ["8080:8000"]
+    depends_on: [energy, mobility, waste]
+    restart: unless-stopped
+
+volumes:
+  energy-data:
+  mobility-data:
+  waste-data:

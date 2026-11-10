@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ciudad inteligente y sostenible</title>
+<style>
+:root{--bg:#eef1f0;--card:#fbfcfb;--tx:#16221f;--mut:#5d6b67;--bd:#d5dcd9;--ac:#0b6e5f;--warn:#a85d00;--bad:#b3261e;--track:#dde4e1}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1514;--card:#16201e;--tx:#e4ece9;--mut:#8fa09b;--bd:#27342f;--ac:#3ecfb2;--warn:#f0b04a;--bad:#ff8a80;--track:#243430}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;justify-content:space-between;padding:20px 24px 8px}
+h1{font-size:1.35rem;margin:0;font-weight:650;letter-spacing:-.01em}
+.status{color:var(--mut);font-size:.9rem}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);margin-right:6px}
+.dot.on{background:var(--ac)}
+main{padding:8px 24px 32px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+section{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px}
+section.wide{grid-column:1/-1}
+h2{font-size:1.05rem;margin:0 0 2px;font-weight:650}
+.kpis{display:flex;gap:20px;flex-wrap:wrap;margin:8px 0 12px}
+.kpi b{font-size:1.9rem;font-weight:600;font-variant-numeric:tabular-nums;display:block;line-height:1.1}
+.kpi span{color:var(--mut);font-size:.85rem}
+.row{display:grid;grid-template-columns:1fr 110px auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--bd)}
+.row .name{font-size:.9rem}.row .name small{display:block;color:var(--mut)}
+.val{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;min-width:70px}
+.sp{width:110px;height:28px;color:var(--ac)}
+.bar{height:6px;border-radius:3px;background:var(--track);margin-top:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+.bar i.hi{background:var(--warn)}
+button{font:inherit;font-size:.85rem;padding:6px 12px;border-radius:6px;border:1px solid var(--ac);background:transparent;color:var(--ac);cursor:pointer;margin-top:10px}
+button:hover{background:var(--ac);color:var(--card)}
+button:focus-visible{outline:2px solid var(--tx);outline-offset:2px}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--bd)}th{color:var(--mut);font-weight:500}
+.muted{color:var(--mut)}.err{color:var(--bad)}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 16px;border-radius:8px;display:none;font-size:.9rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ciudad inteligente y sostenible</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="st">Conectando…</span></div>
+</header>
+<main id="main"></main>
+<div id="toast" role="status"></div>
+<script>
+const META={energy:{t:"Energía",d:"Consumo por zona"},mobility:{t:"Movilidad",d:"Flujo vehicular por vía"},waste:{t:"Residuos",d:"Nivel de llenado por contenedor"}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtEta=s=>s==null?"sin tendencia":s<90?`llena en ~${Math.round(s)} s`:`llena en ~${(s/60).toFixed(1)} min`;
+function spark(pts){
+  if(!pts||pts.length<2)return"";const w=110,h=28,v=pts.map(p=>p.v),lo=Math.min(...v),r=(Math.max(...v)-lo)||1;
+  const d=v.map((y,i)=>`${i?"L":"M"}${(i/(v.length-1)*w).toFixed(1)},${(h-2-(y-lo)/r*(h-4)).toFixed(1)}`).join(" ");
+  return`<svg class="sp" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+}
+function card(k,d){
+  const m=META[k];let h=`<section><h2>${m.t}</h2><div class="muted">${m.d}</div>`;
+  if(!d||!d.ok)return h+`<p class="err">Servicio no disponible.</p></section>`;
+  h+=`<div class="kpis">`+d.kpis.map(x=>`<div class="kpi"><b>${x.value}</b><span>${esc(x.label)}${x.unit?" ("+esc(x.unit)+")":""}</span></div>`).join("")+`</div>`;
+  if(!d.devices.length)h+=`<p class="muted">Esperando datos de los sensores…</p>`;
+  for(const v of d.devices){
+    const w=k==="waste";
+    h+=`<div class="row"><div class="name">${esc(v.device_id)}<small>${w?`<span class="bar"><i class="${v.avg>=80?"hi":""}" style="width:${Math.min(v.avg,100)}%"></i></span>${fmtEta(v.eta_s)}`:`mín ${v.min} · máx ${v.max}`}</small></div>${spark(d.series[v.device_id])}<div class="val">${v.avg} ${esc(d.unit)}</div></div>`;
+  }
+  return h+`<button onclick="inject('${k}')">Simular anomalía</button></section>`;
+}
+function render(o){
+  let h=["energy","mobility","waste"].map(k=>card(k,o.domains[k])).join("");
+  const e=o.edge;
+  h+=`<section><h2>Edge Computing</h2><div class="muted">Filtrado y agregación antes de enviar datos</div>`+(e?
+    `<div class="kpis"><div class="kpi"><b>${e.reduction_pct} %</b><span>menos mensajes hacia los servicios</span></div></div>
+     <table><tr><td>Lecturas recibidas</td><td>${e.received}</td></tr><tr><td>Descartadas (inválidas)</td><td>${e.discarded}</td></tr><tr><td>Resúmenes enviados</td><td>${e.sent}</td></tr><tr><td>Ventana de agregación</td><td>${e.window_s} s</td></tr></table>`
+    :`<p class="muted">Esperando estadísticas del nodo Edge…</p>`)+`</section>`;
+  h+=`<section class="wide"><h2>Alertas recientes</h2>`+(o.alerts.length?
+    `<table><tr><th>Hora</th><th>Dominio</th><th>Detalle</th></tr>`+o.alerts.map(a=>`<tr><td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td>${META[a.domain].t}</td><td>${esc(a.message)}</td></tr>`).join("")+`</table>`
+    :`<p class="muted">Sin alertas. Usa «Simular anomalía» para generar una.</p>`)+`</section>`;
+  document.getElementById("main").innerHTML=h;
+}
+function status(ok){document.getElementById("dot").className="dot"+(ok?" on":"");document.getElementById("st").textContent=ok?"En línea · actualiza cada 2 s":"Sin conexión con el gateway";}
+function toast(t){const e=document.getElementById("toast");e.textContent=t;e.style.display="block";setTimeout(()=>e.style.display="none",2200);}
+async function inject(k){try{await fetch("/api/inject?domain="+k,{method:"POST"});toast("Anomalía enviada: "+META[k].t);}catch{toast("No se pudo enviar");}}
+async function refresh(){try{const r=await fetch("/api/overview");render(await r.json());status(true);}catch{status(false);}}
+refresh();setInterval(refresh,2000);
+</script>
+</body>
+</html>
